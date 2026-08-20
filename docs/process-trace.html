@@ -1,0 +1,467 @@
+<title>run_crew — process trace</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#F2F5F6;
+    --surface:#FFFFFF;
+    --surface-2:#E8EDEF;
+    --ink:#16212B;
+    --muted:#57697A;
+    --line:#D3DBDE;
+    --accent:#0E7A82;      /* teal — hops that reach the target device over the network */
+    --accent-soft:#DCF0EF;
+    --accent2:#B5691B;     /* amber — hops that leave for the DeepSeek API */
+    --accent2-soft:#F6E6D3;
+    --tag-fix-bg:#E4EFE6;
+    --tag-fix-ink:#2B6E3F;
+    --shadow: 0 1px 2px rgba(22,33,43,0.06), 0 8px 24px rgba(22,33,43,0.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10161C;
+      --surface:#171F27;
+      --surface-2:#1E2830;
+      --ink:#E7EEF1;
+      --muted:#93A5B0;
+      --line:#2B3740;
+      --accent:#4FD1C9;
+      --accent-soft:#163A38;
+      --accent2:#E3A458;
+      --accent2-soft:#3A2A16;
+      --tag-fix-bg:#1E3324;
+      --tag-fix-ink:#7FCB93;
+      --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 8px 28px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10161C;
+    --surface:#171F27;
+    --surface-2:#1E2830;
+    --ink:#E7EEF1;
+    --muted:#93A5B0;
+    --line:#2B3740;
+    --accent:#4FD1C9;
+    --accent-soft:#163A38;
+    --accent2:#E3A458;
+    --accent2-soft:#3A2A16;
+    --tag-fix-bg:#1E3324;
+    --tag-fix-ink:#7FCB93;
+    --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 8px 28px rgba(0,0,0,0.35);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", ui-serif, serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{
+    font-family: "Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", ui-monospace, monospace;
+  }
+
+  .page{
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    margin-bottom:40px;
+  }
+  .eyebrow{
+    font-size:12px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .prompt-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:12px 16px;
+    box-shadow:var(--shadow);
+    width:fit-content;
+    max-width:100%;
+    overflow-x:auto;
+  }
+  .prompt-chip .dots{ display:flex; gap:5px; flex:none; }
+  .prompt-chip .dot{ width:8px; height:8px; border-radius:50%; background:var(--line); }
+  .prompt-chip code{
+    font-size:15px;
+    white-space:pre;
+    color:var(--ink);
+  }
+  .prompt-chip .ip{ color:var(--accent); font-weight:600; }
+  h1{
+    font-size:26px;
+    margin:0;
+    text-wrap:balance;
+    font-weight:400;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    margin:0;
+    color:var(--muted);
+    max-width:62ch;
+  }
+
+  /* ---------- diagram panel ---------- */
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:20px 8px 16px;
+    box-shadow:var(--shadow);
+    margin: 36px 0 12px;
+    position:relative;
+  }
+  .panel::before, .panel::after,
+  .panel .corner-tl, .panel .corner-br{
+    content:"";
+    position:absolute;
+    width:14px; height:14px;
+    border:1.5px solid var(--line);
+  }
+  .panel::before{ top:-1px; left:-1px; border-right:none; border-bottom:none; }
+  .panel::after{ bottom:-1px; right:-1px; border-left:none; border-top:none; }
+
+  .diagram-scroll{ overflow-x:auto; }
+  svg.trace{ display:block; margin:0 auto; min-width:640px; }
+  svg.trace text{ font-family: "Cascadia Code","Cascadia Mono",Consolas,"SF Mono",ui-monospace,monospace; }
+  .lane-label{ font-size:12px; letter-spacing:0.08em; fill:var(--ink); }
+  .lane-sub{ font-size:10.5px; fill:var(--muted); }
+  .msg-label{ font-size:11px; fill:var(--muted); }
+  .side-label{ font-size:11.5px; fill:var(--ink); }
+  .lane-line{ stroke:var(--line); stroke-width:1.5; }
+  .to-target{ stroke:var(--accent); }
+  .to-cloud{ stroke:var(--accent2); }
+  .local{ stroke:var(--ink); }
+  .marker-dot{ fill:var(--ink); }
+  .diamond{ fill:var(--surface); stroke:var(--ink); stroke-width:1.5; }
+
+  /* ---------- legend ---------- */
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:18px;
+    padding: 12px 20px 4px;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .legend .item{ display:flex; align-items:center; gap:7px; }
+  .swatch{ width:22px; height:0; border-top:2.5px solid var(--ink); flex:none; }
+  .swatch.target{ border-color:var(--accent); }
+  .swatch.cloud{ border-color:var(--accent2); }
+  .swatch.cond{ border-top-style:dashed; border-color:var(--accent); }
+  .swatch.dot{ width:8px; height:8px; border-radius:50%; background:var(--ink); border:none; }
+
+  figcaption{
+    font-size:13px;
+    color:var(--muted);
+    text-align:center;
+    margin: 8px 0 32px;
+  }
+
+  /* ---------- stage list ---------- */
+  h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:0.1em;
+    color:var(--muted);
+    font-family:inherit;
+    margin: 48px 0 18px;
+    font-weight:400;
+    border-bottom:1px solid var(--line);
+    padding-bottom:10px;
+  }
+  ol.stages{
+    list-style:none;
+    margin:0; padding:0;
+    display:flex; flex-direction:column;
+    gap:22px;
+  }
+  ol.stages li{
+    display:grid;
+    grid-template-columns: 28px 1fr;
+    gap:14px;
+  }
+  .stage-num{
+    font-family:"Cascadia Code","Cascadia Mono",Consolas,ui-monospace,monospace;
+    font-size:13px;
+    color:var(--muted);
+    padding-top:2px;
+  }
+  .stage-body .hop{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-size:10.5px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:5px;
+  }
+  .hop .dot{ width:7px; height:7px; border-radius:50%; }
+  .hop .dot.machine{ background:var(--ink); }
+  .hop .dot.target{ background:var(--accent); }
+  .hop .dot.cloud{ background:var(--accent2); }
+  .stage-body p{ margin:0; }
+  .stage-body code, code{
+    font-family:"Cascadia Code","Cascadia Mono",Consolas,"SF Mono",ui-monospace,monospace;
+    background:var(--surface-2);
+    border-radius:4px;
+    padding:0.1em 0.4em;
+    font-size:0.86em;
+    color:var(--ink);
+  }
+
+  /* ---------- hardening notes ---------- */
+  .notes{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    margin-top:8px;
+  }
+  .note{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px 18px;
+    box-shadow:var(--shadow);
+  }
+  .note .tag{
+    display:inline-block;
+    font-family:"Cascadia Code","Cascadia Mono",Consolas,ui-monospace,monospace;
+    font-size:10.5px;
+    letter-spacing:0.06em;
+    background:var(--tag-fix-bg);
+    color:var(--tag-fix-ink);
+    padding:2px 7px;
+    border-radius:4px;
+    margin-bottom:8px;
+  }
+  .note p{ margin:6px 0 0; color:var(--muted); font-size:15px; }
+  .note strong{ color:var(--ink); font-weight:600; }
+
+  footer{
+    margin-top:56px;
+    padding-top:18px;
+    border-top:1px solid var(--line);
+    font-size:12.5px;
+    color:var(--muted);
+  }
+
+  @media (max-width:600px){
+    .page{ padding:40px 16px 72px; }
+    h1{ font-size:21px; }
+  }
+</style>
+
+<div class="page">
+
+  <header>
+    <div class="eyebrow">Process trace — network_vuln_scanner</div>
+    <div class="prompt-chip">
+      <span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+      <code>uv run run_crew <span class="ip">192.168.1.1</span></code>
+    </div>
+    <h1>What actually happens between that keystroke and <code class="mono" style="background:none;padding:0;color:var(--muted);">report.md</code> landing on disk</h1>
+    <p>Three parties talk to each other during one run: this machine, the device being scanned, and DeepSeek's API. The diagram below traces every hop between them in the order it actually executes.</p>
+  </header>
+
+  <figure style="margin:0;">
+    <div class="panel">
+      <div class="diagram-scroll">
+        <svg class="trace" viewBox="0 0 960 830" role="img"
+             aria-label="Sequence diagram: Your Machine runs nmap and SNMP scans and, if port 22 is open, ssh-audit against the Target Device, then sends the collected findings to the DeepSeek API twice — once for the scanning agent and once for the reporting agent — before writing report.md to disk.">
+          <defs>
+            <marker id="arrow-target" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="var(--accent)"></polygon>
+            </marker>
+            <marker id="arrow-cloud" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="var(--accent2)"></polygon>
+            </marker>
+            <marker id="arrow-local" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <polygon points="0,0 10,5 0,10" fill="var(--ink)"></polygon>
+            </marker>
+          </defs>
+
+          <!-- lane guide lines -->
+          <line x1="130" y1="78" x2="130" y2="795" class="lane-line"></line>
+          <line x1="480" y1="78" x2="480" y2="600" class="lane-line"></line>
+          <line x1="830" y1="78" x2="830" y2="760" class="lane-line"></line>
+
+          <!-- lane headers -->
+          <text x="130" y="34" text-anchor="middle" class="lane-label">YOUR MACHINE</text>
+          <text x="130" y="50" text-anchor="middle" class="lane-sub">crew process</text>
+          <text x="480" y="34" text-anchor="middle" class="lane-label">TARGET DEVICE</text>
+          <text x="480" y="50" text-anchor="middle" class="lane-sub">the thing under test</text>
+          <text x="830" y="34" text-anchor="middle" class="lane-label">DEEPSEEK API</text>
+          <text x="830" y="50" text-anchor="middle" class="lane-sub">cloud LLM</text>
+
+          <!-- row 0: start -->
+          <circle cx="130" cy="95" r="4.5" class="marker-dot"></circle>
+          <text x="112" y="99" text-anchor="end" class="side-label">CLI invoked</text>
+
+          <!-- row 1: proxy loopback probe -->
+          <polyline points="130,150 98,150 98,168 130,168" fill="none" class="local" marker-end="url(#arrow-local)"></polyline>
+          <text x="86" y="146" text-anchor="end" class="side-label">probe 127.0.0.1:7890</text>
+          <text x="86" y="160" text-anchor="end" class="msg-label">clear proxy if dead</text>
+
+          <!-- row 2: assemble -->
+          <circle cx="130" cy="206" r="4.5" class="marker-dot"></circle>
+          <text x="112" y="210" text-anchor="end" class="side-label">assemble agents + tasks</text>
+
+          <!-- row 3: nmap full scan -->
+          <line x1="138" y1="258" x2="472" y2="258" class="to-target" stroke-width="2" marker-end="url(#arrow-target)"></line>
+          <text x="305" y="250" text-anchor="middle" class="msg-label">nmap -p- -sV -sC + vulners</text>
+
+          <!-- row 4: nmap result -->
+          <line x1="472" y1="300" x2="138" y2="300" class="to-target" stroke-width="2" marker-end="url(#arrow-target)"></line>
+          <text x="305" y="292" text-anchor="middle" class="msg-label">open ports · versions · CVEs</text>
+
+          <!-- row 5: snmp -->
+          <line x1="138" y1="352" x2="472" y2="352" class="to-target" stroke-width="2" marker-end="url(#arrow-target)"></line>
+          <text x="305" y="344" text-anchor="middle" class="msg-label">SNMP UDP/161 snmp-brute</text>
+
+          <!-- row 6: snmp result -->
+          <line x1="472" y1="394" x2="138" y2="394" class="to-target" stroke-width="2" marker-end="url(#arrow-target)"></line>
+          <text x="305" y="386" text-anchor="middle" class="msg-label">community result / timeout</text>
+
+          <!-- row 7: decision diamond -->
+          <polygon points="130,432 154,446 130,460 106,446" class="diamond"></polygon>
+          <text x="94" y="450" text-anchor="end" class="side-label">port 22 open?</text>
+
+          <!-- row 8: ssh-audit (conditional) -->
+          <line x1="138" y1="500" x2="472" y2="500" class="to-target" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow-target)"></line>
+          <text x="305" y="492" text-anchor="middle" class="msg-label">ssh-audit --skip-rate-test</text>
+
+          <!-- row 9: ssh-audit result -->
+          <line x1="472" y1="542" x2="138" y2="542" class="to-target" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow-target)"></line>
+          <text x="305" y="534" text-anchor="middle" class="msg-label">cipher · KEX · host-key flags</text>
+
+          <!-- row 10: to deepseek-chat -->
+          <line x1="138" y1="608" x2="822" y2="608" class="to-cloud" stroke-width="2" marker-end="url(#arrow-cloud)"></line>
+          <text x="480" y="600" text-anchor="middle" class="msg-label">raw findings → deepseek-chat</text>
+
+          <!-- row 11: structured findings back -->
+          <line x1="822" y1="650" x2="138" y2="650" class="to-cloud" stroke-width="2" marker-end="url(#arrow-cloud)"></line>
+          <text x="480" y="642" text-anchor="middle" class="msg-label">structured scan findings</text>
+
+          <!-- row 12: to deepseek-reasoner -->
+          <line x1="138" y1="702" x2="822" y2="702" class="to-cloud" stroke-width="2" marker-end="url(#arrow-cloud)"></line>
+          <text x="480" y="694" text-anchor="middle" class="msg-label">findings + policy → deepseek-reasoner</text>
+
+          <!-- row 13: ranked report back -->
+          <line x1="822" y1="744" x2="138" y2="744" class="to-cloud" stroke-width="2" marker-end="url(#arrow-cloud)"></line>
+          <text x="480" y="736" text-anchor="middle" class="msg-label">severity-ranked report text</text>
+
+          <!-- row 14: write report.md -->
+          <circle cx="130" cy="786" r="4.5" class="marker-dot"></circle>
+          <text x="112" y="790" text-anchor="end" class="side-label">write report.md</text>
+
+        </svg>
+      </div>
+
+      <div class="legend">
+        <span class="item"><span class="swatch target"></span> to target device (network probe)</span>
+        <span class="item"><span class="swatch cond"></span> conditional — only if SSH is open</span>
+        <span class="item"><span class="swatch cloud"></span> to DeepSeek API (LLM call)</span>
+        <span class="item"><span class="swatch dot"></span> local-only step</span>
+      </div>
+    </div>
+    <figcaption>Every hop <code>run_crew</code> makes, in execution order — solid teal reaches the scanned device, amber leaves for DeepSeek's API, dashed only fires when port 22 is open.</figcaption>
+  </figure>
+
+  <h2>Stage by stage</h2>
+  <ol class="stages">
+    <li>
+      <span class="stage-num">01</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot machine"></span>your machine</span>
+        <p><code>uv run run_crew 192.168.1.1</code> activates the project's <code>.venv</code> and resolves <code>run_crew</code> — the console-script entry in <code>pyproject.toml</code> pointing at <code>network_vuln_scanner.main:run</code>.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">02</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot machine"></span>your machine</span>
+        <p>Importing <code>main.py</code> runs a proxy check before anything else: a 1-second connection attempt to whatever host:port <code>HTTPS_PROXY</code> points at. Unreachable — VPN client off — clears the proxy vars for this process only, so later API calls go direct instead of hanging.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">03</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot machine"></span>your machine</span>
+        <p><code>main.run()</code> reads the IP from <code>sys.argv</code> and builds <code>NetworkVulnScanner().crew()</code> — two agents (<code>network_scanner</code>, <code>report_analyst</code>), two tasks, <code>Process.sequential</code> — then calls <code>.kickoff()</code>.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">04</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot target"></span>your machine → target</span>
+        <p>The scanner agent's first tool call: a full 65535-port <code>nmap</code> sweep with service/version detection and <code>vulners</code> CVE matching, capped at 30 minutes.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">05</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot target"></span>your machine → target</span>
+        <p>SNMP enumeration runs next regardless of the TCP result, since SNMP is UDP and scanned separately. Capped at 150 seconds total so a filtered port fails fast instead of the 10-minute hangs it used to take.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">06</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot target"></span>your machine → target</span>
+        <p><code>ssh-audit --skip-rate-test</code> runs only if port 22 came back open. The flag exists because ssh-audit's DH-rate test crashes on native Windows with <code>AttributeError: module 'socket' has no attribute 'AF_UNIX'</code>.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">07</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot cloud"></span>your machine → DeepSeek</span>
+        <p>With all three tool outputs collected, the scanner agent's own reasoning step calls <strong>deepseek-chat</strong> to compile everything into one structured findings block — the first hop that leaves your network.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">08</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot cloud"></span>your machine → DeepSeek</span>
+        <p>The reporting agent receives that block as context and calls <strong>deepseek-reasoner</strong> to rank every finding Critical → Info with a fix, and to note the manual <code>hydra</code> credential check that's deliberately not automated.</p>
+      </div>
+    </li>
+    <li>
+      <span class="stage-num">09</span>
+      <div class="stage-body">
+        <span class="hop"><span class="dot machine"></span>your machine</span>
+        <p>Because the reporting task declares <code>output_file='report.md'</code>, CrewAI writes the agent's final answer straight to <code>report.md</code> in the project root.</p>
+      </div>
+    </li>
+  </ol>
+
+  <h2>Two things that used to break this</h2>
+  <div class="notes">
+    <div class="note">
+      <span class="tag">FIXED</span>
+      <p><strong>A dead VPN proxy hung every LLM call for hours.</strong> <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code> pointed at a local Clash instance that wasn't always running. Stage 02's loopback probe now checks it on every run and bypasses it automatically when it's down — no manual toggling needed.</p>
+    </div>
+    <div class="note">
+      <span class="tag">FIXED</span>
+      <p><strong>LLM calls had no timeout.</strong> <code>deepseek-chat</code> now caps at 180s and <code>deepseek-reasoner</code> at 300s, both with 2 retries — so a stalled request fails within minutes instead of hanging indefinitely.</p>
+    </div>
+  </div>
+
+  <footer>network_vuln_scanner · traced from <code>src/network_vuln_scanner/main.py</code>, <code>crew.py</code>, and <code>tools/custom_tool.py</code></footer>
+
+</div>

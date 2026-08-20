@@ -71,6 +71,10 @@ This scans the target, then writes a severity-ranked vulnerability report to
 > whether it's currently reachable and bypasses it if not, so API calls don't
 > hang against a dead proxy.
 
+See [`docs/process-trace.html`](docs/process-trace.html) for a diagram of
+every hop `run_crew` makes between your machine, the target device, and the
+DeepSeek API — open it in a browser after cloning.
+
 ## Project Structure
 
 - `src/network_vuln_scanner/config/agents.yaml` — agent role/goal/backstory definitions
