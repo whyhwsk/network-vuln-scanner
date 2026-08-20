@@ -1,0 +1,40 @@
+scan_task:
+  description: >
+    Run a full assessment against {target} using all available tools, in this
+    order:
+    1. Nmap Full Scan — the primary discovery/fingerprinting pass. Record
+       every open port, detected service, software/version string, and any
+       CVE matches exactly as returned.
+    2. SNMP Enumerator — always run this too, even if SNMP wasn't seen in the
+       TCP scan (it's UDP and scanned separately). Record whether a default
+       community string worked and what it exposed.
+    3. SSH Audit — only if the Nmap Full Scan found an open SSH port (22).
+       Record any weak/deprecated ciphers, KEX, MACs, or host key types.
+    Explicitly flag it as a standalone finding if Telnet (port 23) is open at
+    all, regardless of anything else found — plaintext management access is a
+    finding by itself. Do not omit or condense any tool output at this stage.
+  expected_output: >
+    The raw output from every tool run, plus a structured bullet list of:
+    open ports, service/version per port, CVE matches, SNMP community string
+    results, SSH audit findings, and whether Telnet is exposed.
+  agent: network_scanner
+
+report_task:
+  description: >
+    Review the scan findings for {target}. Group them by severity
+    (Critical/High/Medium/Low/Info), explain the risk of each finding in
+    plain language, and suggest one concrete remediation step per finding
+    (e.g. disable Telnet, rotate the SNMP community string, upgrade FRR to a
+    patched version, disable weak SSH ciphers/KEX). A working default SNMP
+    community string or an open Telnet port must always be ranked Critical or
+    High. In Recommended Next Steps, also note that a manual, low-thread
+    default/weak-credential check (e.g. via hydra, against this lab device
+    only) is a reasonable follow-up but was intentionally not run
+    automatically due to lockout/DoS risk.
+  expected_output: >
+    A markdown report with sections: Summary, Findings by Severity (each item
+    with risk explanation + fix), and Recommended Next Steps. Formatted as
+    markdown without '```'.
+  agent: report_analyst
+  context:
+    - scan_task

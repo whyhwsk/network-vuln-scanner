@@ -1,0 +1,26 @@
+[project]
+name = "network_vuln_scanner"
+version = "0.1.0"
+description = "network-vuln-scanner using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[tools]>=1.15.17,<2.0.0",
+    "ssh-audit>=3.9.0",
+]
+
+[project.scripts]
+network_vuln_scanner = "network_vuln_scanner.main:run"
+run_crew = "network_vuln_scanner.main:run"
+train = "network_vuln_scanner.main:train"
+replay = "network_vuln_scanner.main:replay"
+test = "network_vuln_scanner.main:test"
+run_with_trigger = "network_vuln_scanner.main:run_with_trigger"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"
+project_id = "106ee644-c98e-4186-b16b-8ef54841cfd9"
