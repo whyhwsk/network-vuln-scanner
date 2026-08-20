@@ -61,7 +61,7 @@ uv run run_crew <target-ip-or-hostname>
 For example:
 
 ```bash
-uv run run_crew 10.46.1.197
+uv run run_crew 192.168.1.1
 ```
 
 This scans the target, then writes a severity-ranked vulnerability report to
