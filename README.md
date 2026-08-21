@@ -67,9 +67,10 @@ uv run run_crew 192.168.1.1
 This scans the target, then writes a severity-ranked vulnerability report to
 `report.md` in the project root.
 
-> If you use a VPN/proxy client (e.g. Clash), the crew automatically detects
-> whether it's currently reachable and bypasses it if not, so API calls don't
-> hang against a dead proxy.
+> If you use a VPN/proxy client (e.g. Clash), the crew automatically bypasses
+> it for this run's traffic — even when it's up and reachable, it can still
+> stall specific outbound calls (LLM, telemetry) for minutes. Background
+> telemetry is also disabled outright for the same reason.
 
 See [`docs/process-trace.html`](docs/process-trace.html) for a diagram of
 every hop `run_crew` makes between your machine, the target device, and the
@@ -81,7 +82,7 @@ DeepSeek API — open it in a browser after cloning.
 - `src/network_vuln_scanner/config/tasks.yaml` — scan and report task definitions
 - `src/network_vuln_scanner/crew.py` — wires agents, tools, and LLMs together
 - `src/network_vuln_scanner/tools/custom_tool.py` — the Nmap/SNMP/SSH-Audit tool implementations
-- `src/network_vuln_scanner/main.py` — CLI entry point and proxy auto-detection
+- `src/network_vuln_scanner/main.py` — CLI entry point, unconditional proxy bypass, and telemetry disable
 
 ## Support
 

@@ -1,37 +1,38 @@
 #!/usr/bin/env python
 import os
-import socket
 import sys
 import warnings
-from urllib.parse import urlparse
+
+# CrewAI's background telemetry (PostHog analytics) has no bounded timeout
+# on its own network call, independent of the LLM's timeout/max_retries.
+# Disable it — must be set before crewai is imported.
+os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
 
-def _disable_unreachable_proxy():
+def _force_bypass_proxy():
     """
-    HTTP_PROXY/HTTPS_PROXY may point at a local VPN client (e.g. Clash) that
-    isn't always running. If it's down, outbound LLM API calls hang instead
-    of failing fast. Probe the proxy port; if it doesn't accept a connection,
-    clear the proxy vars for this process so requests go direct.
+    HTTP_PROXY/HTTPS_PROXY typically point at a local VPN client (e.g.
+    Clash). Even when it's up and reachable, it has caused multi-minute
+    hangs on some outbound call this crew makes (LLM and/or telemetry) —
+    not worth chasing down per-destination. This crew's actual traffic
+    (DeepSeek's API, nmap/ssh-audit against the target, etc.) works fine
+    without it, so unconditionally bypass it for this process whenever a
+    VPN/proxy is configured, running direct. If nothing is configured, this
+    is a no-op and the run proceeds as-is.
     """
-    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
-        proxy_url = os.environ.get(var)
-        if not proxy_url:
-            continue
-        parsed = urlparse(proxy_url)
-        if not parsed.hostname or not parsed.port:
-            continue
-        try:
-            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
-                pass  # proxy is up, leave it configured
-        except OSError:
-            for clear_var in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
-                os.environ.pop(clear_var, None)
-        break  # only need to probe once (HTTP/HTTPS proxy is normally the same host:port)
+    had_proxy = any(
+        os.environ.get(var) for var in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy")
+    )
+    for var in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
+        os.environ.pop(var, None)
+    if had_proxy:
+        print("[STARTUP] VPN/proxy detected — bypassing it for this run (direct connection).")
 
 
-_disable_unreachable_proxy()
+_force_bypass_proxy()
 
 from network_vuln_scanner.crew import NetworkVulnScanner
 
